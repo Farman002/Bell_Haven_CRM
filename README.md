@@ -1,66 +1,239 @@
-# Bellhaven CRM Reconciliation Review App
+# Bellhaven CRM Ownership Reconciliation System
 
-## 1. Setup (Windows / PyCharm)
+An automated CRM reconciliation application that identifies ownership discrepancies between Bellhaven Senior Living's website facilities and CRM records, supports human-reviewed corrections, and maintains an auditable history of approved changes.
 
-Open a terminal in the project folder:
+## Project Overview
 
-```powershell
+The Bellhaven CRM Ownership Reconciliation System helps identify and resolve inconsistencies between publicly listed facility information and CRM account ownership.
+
+The application combines website scraping, data matching, ownership analysis, human approval, and controlled CRM API integration.
+
+It is designed to make reconciliation repeatable, transparent, and safe through approval-based execution and audit logging.
+
+## Key Features
+
+- **Website Scraping:** Extracts facility information from the Bellhaven website.
+- **CRM Data Extraction:** Retrieves account records from the CRM API.
+- **Intelligent Matching:** Compares facility names, addresses, locations, and account ownership.
+- **Ownership Reconciliation:** Identifies accounts that may require ownership corrections.
+- **Human-in-the-Loop Approval:** Requires an explicit approval before executing CRM changes.
+- **CHOW Workflow:** Handles Change of Ownership cases while preserving historical account information.
+- **Duplicate Management:** Supports duplicate identification and survivor-account linking.
+- **Audit Logging:** Records decisions and CRM execution results.
+- **Resumable Execution:** Supports recovery from interrupted CHOW workflows.
+- **Scheduled Processing:** Supports daily website scraping and matching.
+
+## Technology Stack
+
+| Component | Technology |
+|---|---|
+| Programming Language | Python |
+| Dashboard | Streamlit |
+| Data Processing | Pandas |
+| Web Scraping | Requests, BeautifulSoup |
+| API Integration | REST API, Requests |
+| Local Database | SQLite |
+| Configuration | Python dotenv |
+| Scheduling | GitHub Actions |
+
+## Project Architecture
+
+```text
+BellHaven_CRM/
+│
+├── app.py
+├── scraper.py
+├── matcher.py
+├── fetch_accounts.py
+├── crm_client.py
+├── approvals.py
+├── reconciliation.py
+├── chow_workflow.py
+│
+├── data/
+│   └── bellhaven_facilities.csv
+│
+├── .github/
+│   └── workflows/
+│       └── daily.yml
+│
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## Application Workflow
+
+1. Scrape facility information from the Bellhaven website.
+2. Retrieve existing CRM accounts.
+3. Normalize and compare facility and CRM information.
+4. Generate matching and ownership review proposals.
+5. Display proposed actions in the Streamlit dashboard.
+6. Review and approve or reject proposed changes.
+7. Execute approved CRM operations through the API.
+8. Verify API results and record execution details in the audit log.
+
+## Reconciliation Logic
+
+The application categorizes records into review groups, including:
+
+- Already under the Bellhaven parent account.
+- Possible matches.
+- Ambiguous matches.
+- Weak matches.
+- Ownership review.
+- No CRM candidate.
+- Potential duplicate accounts.
+- Potentially stale accounts.
+
+Matching classifications are recommendations for review and are not treated as automatic proof of ownership.
+
+## Change of Ownership (CHOW) Handling
+
+The application follows a specific CHOW preservation rule:
+
+When an existing account has both lifetime revenue greater than zero and outstanding accounts receivable greater than zero:
+
+1. Preserve the existing account's original parent ownership.
+2. Create a new account under the Bellhaven parent account.
+3. Link the old account to the new account using `chow_current_account`.
+4. Verify the new account and ownership link.
+5. Preserve the old account's financial and historical information.
+
+When either lifetime revenue or outstanding AR is zero, direct re-parenting may be permitted after ownership verification.
+
+## Duplicate Account Handling
+
+When a duplicate is confirmed:
+
+- Identify the surviving CRM account.
+- Set `duplicate_of_account` on the losing account to the survivor's ID.
+- Mark the losing account as `Inactive`.
+- Preserve the audit history.
+
+The application does not use account merge or deletion operations.
+
+## Human Approval and Audit Trail
+
+CRM modifications are not performed simply because a matching proposal exists.
+
+The application requires an explicit human decision before live execution.
+
+The audit history records:
+
+- Proposal identification.
+- Facility name.
+- Action type.
+- Approval or rejection decision.
+- Actor and rationale.
+- CRM execution status.
+- Before-and-after account information.
+
+This provides traceability for reconciliation decisions and CRM modifications.
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone YOUR_GITHUB_REPOSITORY_URL
+cd BellHaven_CRM
+```
+
+### 2. Create a virtual environment
+
+```bash
 python -m venv .venv
+```
+
+Activate it on Windows:
+
+```bash
 .venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and paste the sandbox token into `CRM_API_TOKEN`.
-Do not share `.env`, commit it to Git, or paste the token into screenshots.
+### 4. Configure environment variables
 
-## 2. Data inputs
+Create a `.env` file in the project root using `.env.example` as a template.
 
-The `data` directory includes the latest matcher exports:
-- `matching_proposals.csv`
-- `matching_candidates_top3.csv`
-- `crm_potentially_stale_review.csv`
-- `crm_duplicate_candidates.csv`
-- `crm_accounts.csv`
-- `bellhaven_facilities.csv`
+Configure:
 
-When rerunning the matcher, replace these files with the latest outputs. Keep the filenames unchanged.
-
-## 3. Run
-
-```powershell
-streamlit run app.py
+```env
+CRM_BASE_URL=YOUR_CRM_API_BASE_URL
+CRM_API_TOKEN=YOUR_CRM_API_TOKEN
 ```
 
-## 4. Approval and execution model
+Never commit the actual `.env` file or API credentials to GitHub.
 
-- Review and save a decision first. Saving a decision does not write to the CRM.
-- The Decision & audit log tab shows saved decisions.
-- Live writes require selecting one approved action and typing `EXECUTE`.
-- Each execution fetches the current account before writing.
-- Direct re-parent is blocked if BOTH lifetime_revenue and outstanding_ar are non-zero.
-- CHOW creates a new account under Bellhaven, then links the old account using `chow_current_account`.
-- Duplicate resolution sets `duplicate_of_account` and `status=Inactive` on the losing account; it is blocked if the losing record has revenue or AR.
-- Stale deactivation is blocked if revenue or AR is non-zero.
-- No merge or delete endpoint is used.
+## Running the Application
 
-## 5. Important limitation
+### Step 1: Scrape website facilities
 
-The supplied OpenAPI document lists the account endpoints but does not publish request-body schemas for POST/PATCH. This app uses the account fields visible in the sandbox GET responses and the assessment's field names. Test a low-risk approved action in the sandbox first. If the API rejects a payload, the app records the failure in SQLite; inspect the error before changing the payload.
+```bash
+python scraper.py
+```
 
-CHOW is a two-step API workflow (create new account, then patch old account link). If the second call fails, the newly created account may remain; inspect CRM and the audit log before retrying. Do not blindly rerun.
+### Step 2: Fetch CRM accounts
 
+```bash
+python fetch_accounts.py
+```
 
-## CHOW execution safety update
+### Step 3: Generate matching proposals
 
-`chow_workflow.py` implements a resumable two-stage CHOW:
-1. Re-checks the old account's financial values and ownership.
-2. Searches for an already-created replacement with exact facility name, city, ZIP and Bellhaven parent before attempting POST.
-3. Persists the new account ID in SQLite immediately after creation (or exact-match recovery).
-4. Verifies the replacement account before linking.
-5. PATCHes only `chow_current_account` on the old account.
-6. Re-fetches both accounts and verifies that the old account's parent, status, lifetime revenue and AR remain unchanged.
-7. If linking fails after creation, a retry resumes from the stored replacement ID.
+```bash
+python matcher.py
+```
 
-The assessment API's OpenAPI file does not publish POST/PATCH request schemas. The create payload therefore follows the field names observed in GET account records, but it remains an unverified API contract until a sandbox POST is accepted. Review the API response and CRM browser after the first approved test. Do not blindly retry after an ambiguous POST response; the workflow attempts an exact-match recovery first.
+### Step 4: Launch the dashboard
 
-Failed executions can be retried from the Decision & audit log tab. A failed CHOW with a persisted new account ID will not repeat the create step.
+```bash
+python -m streamlit run app.py
+```
+
+Open the local Streamlit URL displayed in the terminal.
+
+## Scheduled Execution
+
+The project includes a GitHub Actions workflow for daily automated processing.
+
+The scheduled workflow runs website scraping and matching to refresh reconciliation data.
+
+Live CRM modifications remain subject to the application's human approval process.
+
+## Security and Data Protection
+
+- CRM credentials are stored in environment variables.
+- API tokens must not be committed to source control.
+- CRM modifications require explicit approval.
+- Local approval and audit records are maintained using SQLite.
+- Private CRM exports and sensitive local data should be excluded from the public repository.
+
+## Future Improvements
+
+- Enhanced address and geographic matching.
+- More comprehensive reconciliation reporting.
+- Improved matching confidence and explainability.
+- Additional CRM data validation.
+- Automated reconciliation performance reports.
+
+## Author
+
+**Farman Naim**
+
+Python Developer | Data Analytics | Automation
+
+GitHub: https://github.com/Farman002
+
+LinkedIn: https://www.linkedin.com/in/farman-naim/
+
+---
+
+*This project was developed as a CRM ownership reconciliation and data-quality assessment, with an emphasis on safe API operations, human oversight, historical data preservation, and auditability.*
