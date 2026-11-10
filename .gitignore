@@ -1,0 +1,29 @@
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local database and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Private CRM exports and generated data
+data/crm_accounts.*
+data/matching_proposals.*
+data/matching_candidates_top3.csv
+data/crm_potentially_stale_review.csv
+data/crm_duplicate_candidates.csv
+
+# OS and IDE
+.DS_Store
+.idea/
+.vscode/

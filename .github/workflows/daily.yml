@@ -1,0 +1,21 @@
+name: Bellhaven daily reconciliation refresh
+
+on:
+  schedule:
+    - cron: '30 3 * * *' # 09:00 Asia/Kolkata (UTC+5:30)
+  workflow_dispatch:
+
+jobs:
+  refresh-proposals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r requirements.txt
+      - name: Run scraper and matcher
+        run: |
+          python scraper.py
+          python matcher.py
+      # Deliberately no CRM write step: approvals must happen in the local review app.
